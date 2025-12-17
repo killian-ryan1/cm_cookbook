@@ -1,0 +1,24 @@
+{
+    "Spaghetti Bolognese": {
+        "Minced Beef": 1,
+        "Tomato Sauce": 1,
+        "Onion": 1,
+        "Pasta": 1
+    },
+    "Chicken Stir Fry": {
+        "Chicken Breast": 2,
+        "Soy Sauce": 1,
+        "Mixed Veggies": 1,
+        "Rice": 1
+    },
+    "Tacos": {
+        "Minced Beef": 1,
+        "Taco Shells": 1,
+        "Lettuce": 1,
+        "Cheese": 1
+    },
+    "Testing": {
+        "Onion": 1,
+        "Unicorn": 3
+    }
+}
