@@ -1,24 +1,20 @@
 {
     "Spaghetti Bolognese": {
-        "Minced Beef": 1,
-        "Tomato Sauce": 1,
-        "Onion": 1,
-        "Pasta": 1
+        "Minced Beef": {"qty": 150, "unit": "g", "cat": "Protein"},
+        "Tomato Sauce": {"qty": 0.5, "unit": "jar", "cat": "Store Cupboard"},
+        "Onion": {"qty": 0.5, "unit": "pc", "cat": "Fruit/Veg"},
+        "Pasta": {"qty": 100, "unit": "g", "cat": "Store Cupboard"}
     },
     "Chicken Stir Fry": {
-        "Chicken Breast": 2,
-        "Soy Sauce": 1,
-        "Mixed Veggies": 1,
-        "Rice": 1
+        "Chicken Breast": {"qty": 1, "unit": "pc", "cat": "Protein"},
+        "Soy Sauce": {"qty": 2, "unit": "tbsp", "cat": "Store Cupboard"},
+        "Mixed Veggies": {"qty": 1, "unit": "handful", "cat": "Fruit/Veg"},
+        "Rice": {"qty": 75, "unit": "g", "cat": "Store Cupboard"}
     },
-    "Tacos": {
-        "Minced Beef": 1,
-        "Taco Shells": 1,
-        "Lettuce": 1,
-        "Cheese": 1
-    },
-    "Testing": {
-        "Onion": 1,
-        "Unicorn": 3
+    "Taco": {
+        "Minced Beef": {"qty": 150, "unit": "g", "cat": "Protein"},
+        "Taco Shells": {"qty": 3, "unit": "pc", "cat": "Store Cupboard"},
+        "Lettuce": {"qty": 0.25, "unit": "pc", "cat": "Fruit/Veg"},
+        "Cheese": {"qty": 30, "unit": "g", "cat": "Dairy"}
     }
 }
