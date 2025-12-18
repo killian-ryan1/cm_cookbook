@@ -26,6 +26,16 @@ def get_data_from_google():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(ttl="1m")
 
+# --- 3. CLEAR CALLBACK FUNCTION (THE FIX) ---
+def clear_selections():
+    """This function wipes all selections properly without causing errors."""
+    st.session_state["search_query"] = ""
+    st.session_state["selected_meals_list"] = []
+    # Clear servings and checkboxes
+    for key in list(st.session_state.keys()):
+        if key.startswith("serve_") or key.startswith("chk_"):
+            del st.session_state[key]
+
 # --- MAIN APP ---
 if check_password():
     try:
@@ -37,17 +47,23 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION ---
+    # --- 4. SEARCH & SELECTION ---
     st.header("Plan your week")
     
     all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # Get current selections
-    current_selections = st.session_state.get('selected_meals_list', [])
+    # Initialize session state keys if they don't exist
+    if "selected_meals_list" not in st.session_state:
+        st.session_state["selected_meals_list"] = []
+    if "search_query" not in st.session_state:
+        st.session_state["search_query"] = ""
 
-    # ADDED 'key' to allow the button to clear the text box
+    # Search Input
     search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here...", key="search_query")
 
+    # Selection Logic
+    current_selections = st.session_state["selected_meals_list"]
+    
     if search_term:
         search_results = [r for r in all_recipes if search_term.lower() in r.lower()]
     else:
@@ -58,11 +74,10 @@ if check_password():
     selected_meals = st.multiselect(
         "Choose from list:", 
         options=combined_options,
-        default=current_selections,
         key="selected_meals_list"
     )
 
-    # --- 4. INDIVIDUAL SERVING SIZES ---
+    # --- 5. INDIVIDUAL SERVING SIZES ---
     meal_servings = {}
     if selected_meals:
         st.subheader("Set Servings")
@@ -76,7 +91,7 @@ if check_password():
                 key=f"serve_{meal}"
             )
 
-    # --- 5. AGGREGATION LOGIC ---
+    # --- 6. AGGREGATION LOGIC ---
     if selected_meals:
         st.divider()
         st.header("🛒 Organized Shopping List")
@@ -104,7 +119,7 @@ if check_password():
             
             master_list[cat][item]['qty'] += total_qty
 
-        # --- 6. DISPLAY & WHATSAPP ---
+        # --- 7. DISPLAY & WHATSAPP ---
         whatsapp_text = f"🍽️ *PLAN: {', '.join(selected_meals)}*\n\n"
         
         sorted_cats = sorted(master_list.keys())
@@ -126,23 +141,13 @@ if check_password():
             st.write("")
             whatsapp_text += "\n"
 
-        # --- 7. ACTION BUTTONS ---
+        # --- 8. ACTION BUTTONS ---
         st.divider()
         encoded_text = urllib.parse.quote(whatsapp_text)
         st.link_button("📲 Share to WhatsApp", f"https://wa.me/?text={encoded_text}")
 
-        # --- IMPROVED CLEAR LOGIC ---
-        if st.button("🗑️ Clear All Selections"):
-            # We wipe the search box and the selection list
-            st.session_state["search_query"] = ""
-            st.session_state["selected_meals_list"] = []
-            
-            # Wipe everything else (serving sizes, etc.)
-            for key in list(st.session_state.keys()):
-                if key not in ["password_correct", "search_query", "selected_meals_list"]:
-                    del st.session_state[key]
-            
-            st.rerun()
+        # The Clear button now uses on_click (the callback)
+        st.button("🗑️ Clear All Selections", on_click=clear_selections)
             
     else:
         st.info("Search for a meal above to start building your list.")
