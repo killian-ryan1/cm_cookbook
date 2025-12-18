@@ -23,39 +23,47 @@ def password_entered():
 
 # --- 2. GOOGLE SHEETS CONNECTION ---
 def get_data_from_google():
-    # This library handles the 'handshake' more reliably in the cloud
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # It will look for the [connections.gsheets] section in your secrets
     return conn.read(ttl="1m")
 
 # --- MAIN APP ---
 if check_password():
     try:
         df = get_data_from_google()
-        
-        # Simple cleanup to remove any completely empty rows from the sheet
         df = df.dropna(subset=['Recipe Name', 'Ingredient'])
-        
     except Exception as e:
         st.error(f"Could not connect to Google Sheets: {e}")
-        st.info("Check your Streamlit Secrets and ensure the Sheet is shared with your Service Account email.")
         st.stop()
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION ---
+    # --- 3. SEARCH & SELECTION (ALPHABETICAL & SEARCHABLE) ---
     st.header("Plan your week")
+    # Rule 1: Sorting alphabetically
     recipe_names = sorted(df['Recipe Name'].unique().tolist())
-    selected_meals = st.multiselect("Select your meals:", options=recipe_names)
+    
+    # Rule 2: multiselect in Streamlit is natively searchable on mobile!
+    selected_meals = st.multiselect(
+        "Search and select your meals:", 
+        options=recipe_names,
+        placeholder="Start typing (e.g. 'Spag')..."
+    )
 
-    # --- 4. SERVING SIZES ---
+    # --- 4. INDIVIDUAL SERVING SIZES (0.5 INCREMENTS) ---
     meal_servings = {}
     if selected_meals:
         st.subheader("Set Servings")
         cols = st.columns(len(selected_meals))
         for i, meal in enumerate(selected_meals):
             with cols[i]:
-                meal_servings[meal] = st.number_input(f"{meal}", min_value=1, value=1, key=f"serve_{meal}")
+                # Rule 4: Changed to number_input with step=0.5 and float format
+                meal_servings[meal] = st.number_input(
+                    f"{meal}", 
+                    min_value=0.0, 
+                    value=1.0, 
+                    step=0.5, 
+                    key=f"serve_{meal}"
+                )
 
     # --- 5. AGGREGATION LOGIC ---
     if selected_meals:
@@ -68,13 +76,12 @@ if check_password():
         for _, row in selected_df.iterrows():
             item = row['Ingredient']
             qty = row['Quantity']
-            unit = row['Unit']
+            unit = str(row['Unit']).strip()
             cat = str(row.get('Category', 'Other')).strip()
             if not cat or cat == 'nan': cat = "Other"
             
-            multiplier = meal_servings.get(row['Recipe Name'], 1)
+            multiplier = meal_servings.get(row['Recipe Name'], 1.0)
             
-            # Use float conversion to handle potential string numbers in Sheets
             try:
                 total_qty = float(qty) * multiplier
             except:
@@ -95,9 +102,19 @@ if check_password():
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
-                # Clean up display if qty is a whole number (e.g., 2.0 -> 2)
+                # Rule 3: Smart Spacing
+                # If unit is common (g, kg, ml, etc), keep it tight. Otherwise, add a space.
+                tight_units = ['g', 'kg', 'ml', 'l', 'lb', 'lbs', 'oz']
+                unit_str = data['unit']
+                
+                if unit_str.lower() in tight_units or not unit_str:
+                    spacing = ""
+                else:
+                    spacing = " " # Add space for "whole", "tin", "pack" etc.
+
                 display_qty = int(data['qty']) if data['qty'] == int(data['qty']) else data['qty']
-                line = f"{display_qty}{data['unit']} {item}"
+                
+                line = f"{display_qty}{spacing}{unit_str} {item}"
                 st.checkbox(line, key=f"chk_{item}_{category}")
                 whatsapp_text += f"- [ ] {line}\n"
             st.write("")
@@ -105,10 +122,8 @@ if check_password():
 
         # --- 7. ACTION BUTTONS ---
         st.divider()
-        
         encoded_text = urllib.parse.quote(whatsapp_text)
-        wa_url = f"https://wa.me/?text={encoded_text}"
-        st.link_button("📲 Share to WhatsApp", wa_url)
+        st.link_button("📲 Share to WhatsApp", f"https://wa.me/?text={encoded_text}")
 
         if st.button("🗑️ Clear All Selections"):
             for key in list(st.session_state.keys()):
