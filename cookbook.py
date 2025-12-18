@@ -37,16 +37,25 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION (ONE BOX ATTEMPT) ---
+    # --- 3. SEARCH & SELECTION (MOBILE KEYBOARD FIX) ---
     st.header("Plan your week")
     
     all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # We use a simple label and a key. 
-    # TIP: Try tapping exactly on the blinking cursor line inside the box.
+    # Text Input for searching (Guaranteed to trigger keyboard)
+    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here (e.g., 'Spag')")
+
+    # Filter options based on search
+    if search_term:
+        filtered_options = [r for r in all_recipes if search_term.lower() in r.lower()]
+    else:
+        filtered_options = all_recipes
+
+    # The actual selection box
     selected_meals = st.multiselect(
-        "Search and select meals:", 
-        options=all_recipes,
+        "Choose from list:", 
+        options=filtered_options,
+        default=st.session_state.get('selected_meals_list', []),
         key="selected_meals_list"
     )
 
@@ -55,7 +64,6 @@ if check_password():
     if selected_meals:
         st.subheader("Set Servings")
         for meal in selected_meals:
-            # step=0.5 allows for half portions
             meal_servings[meal] = st.number_input(
                 f"Servings for {meal}:", 
                 min_value=0.0, 
@@ -102,12 +110,10 @@ if check_password():
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
-                # Rule 3: Smart Spacing for non-standard units
                 tight_units = ['g', 'kg', 'ml', 'l', 'lb', 'lbs', 'oz']
                 unit_str = data['unit']
                 spacing = "" if unit_str.lower() in tight_units or not unit_str else " "
 
-                # Clean up .0 display
                 q = data['qty']
                 display_qty = int(q) if q == int(q) else q
                 
@@ -129,4 +135,4 @@ if check_password():
             st.rerun()
             
     else:
-        st.info("Tap the box above to find a meal.")
+        st.info("Search for a meal above to build your list.")
