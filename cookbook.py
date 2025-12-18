@@ -30,7 +30,6 @@ def get_data_from_google():
 if check_password():
     try:
         df = get_data_from_google()
-        # Clean up data to remove empty rows
         df = df.dropna(subset=['Recipe Name', 'Ingredient'])
     except Exception as e:
         st.error(f"Could not connect to Google Sheets: {e}")
@@ -38,24 +37,22 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION (BUG-FIXED SEARCH) ---
+    # --- 3. SEARCH & SELECTION ---
     st.header("Plan your week")
     
     all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # Get current selections from state to prevent the 'not in options' error
+    # Get current selections
     current_selections = st.session_state.get('selected_meals_list', [])
 
-    # Search Input (triggers keyboard on mobile)
-    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here (e.g. 'Spag')")
+    # ADDED 'key' to allow the button to clear the text box
+    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here...", key="search_query")
 
-    # Filtered list based on search
     if search_term:
         search_results = [r for r in all_recipes if search_term.lower() in r.lower()]
     else:
         search_results = all_recipes
 
-    # BUG FIX: Options must always include search results PLUS anything already selected
     combined_options = sorted(list(set(search_results + current_selections)))
 
     selected_meals = st.multiselect(
@@ -116,12 +113,10 @@ if check_password():
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
-                # Smart Spacing Logic
                 tight_units = ['g', 'kg', 'ml', 'l', 'lb', 'lbs', 'oz']
                 unit_str = data['unit']
                 spacing = "" if unit_str.lower() in tight_units or not unit_str else " "
 
-                # Clean up display (2.0 -> 2, 1.5 -> 1.5)
                 q = data['qty']
                 display_qty = int(q) if q == int(q) else q
                 
@@ -136,10 +131,17 @@ if check_password():
         encoded_text = urllib.parse.quote(whatsapp_text)
         st.link_button("📲 Share to WhatsApp", f"https://wa.me/?text={encoded_text}")
 
+        # --- IMPROVED CLEAR LOGIC ---
         if st.button("🗑️ Clear All Selections"):
+            # We wipe the search box and the selection list
+            st.session_state["search_query"] = ""
+            st.session_state["selected_meals_list"] = []
+            
+            # Wipe everything else (serving sizes, etc.)
             for key in list(st.session_state.keys()):
-                if key != "password_correct":
+                if key not in ["password_correct", "search_query", "selected_meals_list"]:
                     del st.session_state[key]
+            
             st.rerun()
             
     else:
