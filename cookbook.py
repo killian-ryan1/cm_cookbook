@@ -30,6 +30,7 @@ def get_data_from_google():
 if check_password():
     try:
         df = get_data_from_google()
+        # Clean up data to remove empty rows
         df = df.dropna(subset=['Recipe Name', 'Ingredient'])
     except Exception as e:
         st.error(f"Could not connect to Google Sheets: {e}")
@@ -37,25 +38,30 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION (MOBILE KEYBOARD FIX) ---
+    # --- 3. SEARCH & SELECTION (BUG-FIXED SEARCH) ---
     st.header("Plan your week")
     
     all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # Text Input for searching (Guaranteed to trigger keyboard)
-    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here (e.g., 'Spag')")
+    # Get current selections from state to prevent the 'not in options' error
+    current_selections = st.session_state.get('selected_meals_list', [])
 
-    # Filter options based on search
+    # Search Input (triggers keyboard on mobile)
+    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here (e.g. 'Spag')")
+
+    # Filtered list based on search
     if search_term:
-        filtered_options = [r for r in all_recipes if search_term.lower() in r.lower()]
+        search_results = [r for r in all_recipes if search_term.lower() in r.lower()]
     else:
-        filtered_options = all_recipes
+        search_results = all_recipes
 
-    # The actual selection box
+    # BUG FIX: Options must always include search results PLUS anything already selected
+    combined_options = sorted(list(set(search_results + current_selections)))
+
     selected_meals = st.multiselect(
         "Choose from list:", 
-        options=filtered_options,
-        default=st.session_state.get('selected_meals_list', []),
+        options=combined_options,
+        default=current_selections,
         key="selected_meals_list"
     )
 
@@ -110,10 +116,12 @@ if check_password():
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
+                # Smart Spacing Logic
                 tight_units = ['g', 'kg', 'ml', 'l', 'lb', 'lbs', 'oz']
                 unit_str = data['unit']
                 spacing = "" if unit_str.lower() in tight_units or not unit_str else " "
 
+                # Clean up display (2.0 -> 2, 1.5 -> 1.5)
                 q = data['qty']
                 display_qty = int(q) if q == int(q) else q
                 
@@ -135,4 +143,4 @@ if check_password():
             st.rerun()
             
     else:
-        st.info("Search for a meal above to build your list.")
+        st.info("Search for a meal above to start building your list.")
