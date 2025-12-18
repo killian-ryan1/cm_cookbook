@@ -30,7 +30,6 @@ def get_data_from_google():
 if check_password():
     try:
         df = get_data_from_google()
-        # Clean up data
         df = df.dropna(subset=['Recipe Name', 'Ingredient'])
     except Exception as e:
         st.error(f"Could not connect to Google Sheets: {e}")
@@ -38,27 +37,25 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 3. SEARCH & SELECTION ---
+    # --- 3. SEARCH & SELECTION (ONE BOX ATTEMPT) ---
     st.header("Plan your week")
     
-    # Get alphabetical list
-    recipe_names = sorted(df['Recipe Name'].unique().tolist())
+    all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # MOBILE KEYBOARD TIP: 
-    # Tapping the placeholder text below should trigger the phone keyboard.
+    # We use a simple label and a key. 
+    # TIP: Try tapping exactly on the blinking cursor line inside the box.
     selected_meals = st.multiselect(
-        "Tap here to type and search:", 
-        options=recipe_names,
-        placeholder="Type meal name...",
-        key="meal_selector"
+        "Search and select meals:", 
+        options=all_recipes,
+        key="selected_meals_list"
     )
 
     # --- 4. INDIVIDUAL SERVING SIZES ---
     meal_servings = {}
     if selected_meals:
         st.subheader("Set Servings")
-        # On mobile, columns stack vertically. This is good for typing!
         for meal in selected_meals:
+            # step=0.5 allows for half portions
             meal_servings[meal] = st.number_input(
                 f"Servings for {meal}:", 
                 min_value=0.0, 
@@ -105,14 +102,12 @@ if check_password():
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
-                # SMART SPACING LOGIC
+                # Rule 3: Smart Spacing for non-standard units
                 tight_units = ['g', 'kg', 'ml', 'l', 'lb', 'lbs', 'oz']
                 unit_str = data['unit']
-                
-                # If it's a standard measurement, no space. If it's a word like "whole", add space.
                 spacing = "" if unit_str.lower() in tight_units or not unit_str else " "
 
-                # Remove .0 for display (e.g. 1.0 becomes 1, but 1.5 stays 1.5)
+                # Clean up .0 display
                 q = data['qty']
                 display_qty = int(q) if q == int(q) else q
                 
@@ -134,4 +129,4 @@ if check_password():
             st.rerun()
             
     else:
-        st.info("Start typing a meal name above to build your list.")
+        st.info("Tap the box above to find a meal.")
