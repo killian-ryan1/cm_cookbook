@@ -1,6 +1,7 @@
 import streamlit as st
-import json
-import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
 import urllib.parse
 
 # --- 1. PASSWORD PROTECTION ---
@@ -15,35 +16,54 @@ def check_password():
     return True
 
 def password_entered():
-    if st.session_state["password"] == "max": # <--- SET YOUR PASSWORD
+    # Keep the password "max" as requested
+    if st.session_state["password"] == "max": 
         st.session_state["password_correct"] = True
         del st.session_state["password"]
     else:
         st.session_state["password_correct"] = False
 
+# --- 2. GOOGLE SHEETS CONNECTION ---
+def get_data_from_google():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    # Authenticate using Streamlit Secrets (TOML format in Streamlit Cloud)
+    creds_dict = {
+        "type": st.secrets["type"],
+        "project_id": st.secrets["project_id"],
+        "private_key_id": st.secrets["private_key_id"],
+        "private_key": st.secrets["private_key"],
+        "client_email": st.secrets["client_email"],
+        "client_id": st.secrets["client_id"],
+        "auth_uri": st.secrets["auth_uri"],
+        "token_uri": st.secrets["token_uri"],
+        "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+    }
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    
+    # Replace with the EXACT name of your Google Sheet
+    sheet = client.open("My_Recipe_Database").sheet1 
+    return pd.DataFrame(sheet.get_all_records())
+
+# --- MAIN APP ---
 if check_password():
-    FILE_NAME = 'recipes.json'
+    try:
+        df = get_data_from_google()
+    except Exception as e:
+        st.error(f"Could not connect to Google Sheets: {e}")
+        st.stop()
 
-    def load_recipes():
-        if os.path.exists(FILE_NAME):
-            with open(FILE_NAME, 'r') as f:
-                return json.load(f)
-        return {}
-
-    recipes = load_recipes()
-
-    # --- UPDATED TITLE ---
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 2. SEARCH & SELECTION ---
+    # --- 3. SEARCH & SELECTION ---
     st.header("Plan your week")
-    selected_meals = st.multiselect(
-        "Search and select your meals:", 
-        options=list(recipes.keys()),
-        key="selected_meals_list" 
-    )
+    recipe_names = sorted(df['Recipe Name'].unique().tolist())
+    selected_meals = st.multiselect("Select your meals:", options=recipe_names)
 
-    # --- 3. INDIVIDUAL SERVING SIZES ---
+    # --- 4. SERVING SIZES ---
     meal_servings = {}
     if selected_meals:
         st.subheader("Set Servings")
@@ -52,46 +72,51 @@ if check_password():
             with cols[i]:
                 meal_servings[meal] = st.number_input(f"{meal}", min_value=1, value=1, key=f"serve_{meal}")
 
-    # --- 4. AGGREGATION LOGIC ---
+    # --- 5. AGGREGATION LOGIC ---
     if selected_meals:
         st.divider()
         st.header("🛒 Organized Shopping List")
         
+        # This dictionary will store our data grouped by category
         master_list = {}
-        for meal in selected_meals:
-            multiplier = meal_servings[meal]
-            ingredients = recipes[meal]
-            for item, info in ingredients.items():
-                if isinstance(info, dict):
-                    cat = info.get('cat', 'Other')
-                    qty = info.get('qty', 0) * multiplier
-                    unit = info.get('unit', '')
-                else:
-                    cat = 'Other'
-                    qty = info * multiplier
-                    unit = ''
-                
-                if cat not in master_list: master_list[cat] = {}
-                if item not in master_list[cat]: master_list[cat][item] = {'qty': 0, 'unit': unit}
-                master_list[cat][item]['qty'] += qty
-
-        # --- 5. DISPLAY & WHATSAPP GENERATION ---
-        # Added meal names to the top of the WhatsApp text
-        meal_names_str = ", ".join(selected_meals)
-        whatsapp_text = f"🍽️ *PLAN: {meal_names_str}*\n\n🛒 *SHOPPING LIST*\n\n"
         
+        selected_df = df[df['Recipe Name'].isin(selected_meals)]
+
+        for _, row in selected_df.iterrows():
+            item = row['Ingredient']
+            qty = row['Quantity']
+            unit = row['Unit']
+            # READ CATEGORY FROM SHEET: defaults to 'Other' if cell is empty
+            cat = str(row.get('Category', 'Other')).strip()
+            if not cat: cat = "Other"
+            
+            multiplier = meal_servings.get(row['Recipe Name'], 1)
+            total_qty = qty * multiplier
+            
+            # Organize into the master_list
+            if cat not in master_list: master_list[cat] = {}
+            if item not in master_list[cat]: 
+                master_list[cat][item] = {'qty': 0, 'unit': unit}
+            
+            master_list[cat][item]['qty'] += total_qty
+
+        # --- 6. DISPLAY & WHATSAPP ---
+        whatsapp_text = f"🍽️ *PLAN: {', '.join(selected_meals)}*\n\n"
+        
+        # Sort categories alphabetically for a clean UI
         sorted_cats = sorted(master_list.keys())
         for category in sorted_cats:
             st.markdown(f"### 📍 {category}")
             whatsapp_text += f"*{category.upper()}*\n"
+            
             for item, data in master_list[category].items():
                 line = f"{data['qty']}{data['unit']} {item}"
-                st.checkbox(line, key=f"check_{item}")
+                st.checkbox(line, key=f"chk_{item}_{category}")
                 whatsapp_text += f"- [ ] {line}\n"
             st.write("")
             whatsapp_text += "\n"
 
-        # --- 6. ACTION BUTTONS ---
+        # --- 7. ACTION BUTTONS ---
         st.divider()
         
         encoded_text = urllib.parse.quote(whatsapp_text)
@@ -99,6 +124,7 @@ if check_password():
         st.link_button("📲 Share to WhatsApp", wa_url)
 
         if st.button("🗑️ Clear All Selections"):
+            # Clear everything except the login status
             for key in list(st.session_state.keys()):
                 if key != "password_correct":
                     del st.session_state[key]
