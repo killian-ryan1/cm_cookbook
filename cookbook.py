@@ -17,24 +17,13 @@ def check_password():
 def password_entered():
     if st.session_state["password"] == "max": 
         st.session_state["password_correct"] = True
-        del st.session_state["password"]
     else:
         st.session_state["password_correct"] = False
 
-# --- 2. GOOGLE SHEETS CONNECTION ---
+# --- 2. DATA FETCHING ---
 def get_data_from_google():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(ttl="1m")
-
-# --- 3. CLEAR CALLBACK FUNCTION (THE FIX) ---
-def clear_selections():
-    """This function wipes all selections properly without causing errors."""
-    st.session_state["search_query"] = ""
-    st.session_state["selected_meals_list"] = []
-    # Clear servings and checkboxes
-    for key in list(st.session_state.keys()):
-        if key.startswith("serve_") or key.startswith("chk_"):
-            del st.session_state[key]
 
 # --- MAIN APP ---
 if check_password():
@@ -47,37 +36,36 @@ if check_password():
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
 
-    # --- 4. SEARCH & SELECTION ---
+    # --- 3. SEARCH & SELECTION (TWO-BOX SYSTEM) ---
     st.header("Plan your week")
     
     all_recipes = sorted(df['Recipe Name'].unique().tolist())
     
-    # Initialize session state keys if they don't exist
+    # Session state for the multiselect to prevent losing data
     if "selected_meals_list" not in st.session_state:
         st.session_state["selected_meals_list"] = []
-    if "search_query" not in st.session_state:
-        st.session_state["search_query"] = ""
 
-    # Search Input
-    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here...", key="search_query")
+    # BOX 1: The Search Input (Triggers phone keyboard)
+    search_term = st.text_input("🔍 Search for a meal:", placeholder="Type here (e.g. 'Spag')")
 
-    # Selection Logic
-    current_selections = st.session_state["selected_meals_list"]
-    
+    # Filtered options based on search
     if search_term:
         search_results = [r for r in all_recipes if search_term.lower() in r.lower()]
     else:
         search_results = all_recipes
 
-    combined_options = sorted(list(set(search_results + current_selections)))
+    # BUG FIX: Ensure options always include the current selections
+    combined_options = sorted(list(set(search_results + st.session_state["selected_meals_list"])))
 
+    # BOX 2: The Multi-Select Dropdown
     selected_meals = st.multiselect(
         "Choose from list:", 
         options=combined_options,
+        default=st.session_state["selected_meals_list"],
         key="selected_meals_list"
     )
 
-    # --- 5. INDIVIDUAL SERVING SIZES ---
+    # --- 4. INDIVIDUAL SERVING SIZES ---
     meal_servings = {}
     if selected_meals:
         st.subheader("Set Servings")
@@ -91,8 +79,7 @@ if check_password():
                 key=f"serve_{meal}"
             )
 
-    # --- 6. AGGREGATION LOGIC ---
-    if selected_meals:
+        # --- 5. SHOPPING LIST LOGIC ---
         st.divider()
         st.header("🛒 Organized Shopping List")
         
@@ -119,11 +106,10 @@ if check_password():
             
             master_list[cat][item]['qty'] += total_qty
 
-        # --- 7. DISPLAY & WHATSAPP ---
+        # --- 6. DISPLAY & WHATSAPP ---
         whatsapp_text = f"🍽️ *PLAN: {', '.join(selected_meals)}*\n\n"
         
-        sorted_cats = sorted(master_list.keys())
-        for category in sorted_cats:
+        for category in sorted(master_list.keys()):
             st.markdown(f"### 📍 {category}")
             whatsapp_text += f"*{category.upper()}*\n"
             
@@ -141,13 +127,10 @@ if check_password():
             st.write("")
             whatsapp_text += "\n"
 
-        # --- 8. ACTION BUTTONS ---
+        # --- 7. SHARE ACTION ---
         st.divider()
         encoded_text = urllib.parse.quote(whatsapp_text)
         st.link_button("📲 Share to WhatsApp", f"https://wa.me/?text={encoded_text}")
-
-        # The Clear button now uses on_click (the callback)
-        st.button("🗑️ Clear All Selections", on_click=clear_selections)
             
     else:
-        st.info("Search for a meal above to start building your list.")
+        st.info("Search and select a meal above to see your shopping list.")
