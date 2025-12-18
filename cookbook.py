@@ -1,6 +1,5 @@
 import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import urllib.parse
 
@@ -16,7 +15,6 @@ def check_password():
     return True
 
 def password_entered():
-    # Keep the password "max" as requested
     if st.session_state["password"] == "max": 
         st.session_state["password_correct"] = True
         del st.session_state["password"]
@@ -25,35 +23,22 @@ def password_entered():
 
 # --- 2. GOOGLE SHEETS CONNECTION ---
 def get_data_from_google():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Authenticate using Streamlit Secrets (TOML format in Streamlit Cloud)
-    creds_dict = {
-        "type": st.secrets["type"],
-        "project_id": st.secrets["project_id"],
-        "private_key_id": st.secrets["private_key_id"],
-        "private_key": st.secrets["private_key"],
-        "client_email": st.secrets["client_email"],
-        "client_id": st.secrets["client_id"],
-        "auth_uri": st.secrets["auth_uri"],
-        "token_uri": st.secrets["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["client_x509_cert_url"]
-    }
-    
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    
-    # Replace with the EXACT name of your Google Sheet
-    sheet = client.open("My_Recipe_Database").sheet1 
-    return pd.DataFrame(sheet.get_all_records())
+    # This library handles the 'handshake' more reliably in the cloud
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    # It will look for the [connections.gsheets] section in your secrets
+    return conn.read(ttl="1m")
 
 # --- MAIN APP ---
 if check_password():
     try:
         df = get_data_from_google()
+        
+        # Simple cleanup to remove any completely empty rows from the sheet
+        df = df.dropna(subset=['Recipe Name', 'Ingredient'])
+        
     except Exception as e:
         st.error(f"Could not connect to Google Sheets: {e}")
+        st.info("Check your Streamlit Secrets and ensure the Sheet is shared with your Service Account email.")
         st.stop()
 
     st.title("🍽️ Caoimhe's Smart Shopping List")
@@ -77,23 +62,24 @@ if check_password():
         st.divider()
         st.header("🛒 Organized Shopping List")
         
-        # This dictionary will store our data grouped by category
         master_list = {}
-        
         selected_df = df[df['Recipe Name'].isin(selected_meals)]
 
         for _, row in selected_df.iterrows():
             item = row['Ingredient']
             qty = row['Quantity']
             unit = row['Unit']
-            # READ CATEGORY FROM SHEET: defaults to 'Other' if cell is empty
             cat = str(row.get('Category', 'Other')).strip()
-            if not cat: cat = "Other"
+            if not cat or cat == 'nan': cat = "Other"
             
             multiplier = meal_servings.get(row['Recipe Name'], 1)
-            total_qty = qty * multiplier
             
-            # Organize into the master_list
+            # Use float conversion to handle potential string numbers in Sheets
+            try:
+                total_qty = float(qty) * multiplier
+            except:
+                total_qty = 0
+            
             if cat not in master_list: master_list[cat] = {}
             if item not in master_list[cat]: 
                 master_list[cat][item] = {'qty': 0, 'unit': unit}
@@ -103,14 +89,15 @@ if check_password():
         # --- 6. DISPLAY & WHATSAPP ---
         whatsapp_text = f"🍽️ *PLAN: {', '.join(selected_meals)}*\n\n"
         
-        # Sort categories alphabetically for a clean UI
         sorted_cats = sorted(master_list.keys())
         for category in sorted_cats:
             st.markdown(f"### 📍 {category}")
             whatsapp_text += f"*{category.upper()}*\n"
             
             for item, data in master_list[category].items():
-                line = f"{data['qty']}{data['unit']} {item}"
+                # Clean up display if qty is a whole number (e.g., 2.0 -> 2)
+                display_qty = int(data['qty']) if data['qty'] == int(data['qty']) else data['qty']
+                line = f"{display_qty}{data['unit']} {item}"
                 st.checkbox(line, key=f"chk_{item}_{category}")
                 whatsapp_text += f"- [ ] {line}\n"
             st.write("")
@@ -124,7 +111,6 @@ if check_password():
         st.link_button("📲 Share to WhatsApp", wa_url)
 
         if st.button("🗑️ Clear All Selections"):
-            # Clear everything except the login status
             for key in list(st.session_state.keys()):
                 if key != "password_correct":
                     del st.session_state[key]
